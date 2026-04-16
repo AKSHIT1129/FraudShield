@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 dark:bg-fs-dark dark:text-gray-200 font-sans antialiased overflow-x-hidden transition-colors duration-300;
+  }
+}
+
+@layer utilities {
+  .glow-text {
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+  }
+  
+  .glass-panel {
+    @apply bg-fs-card/80 backdrop-blur-md border border-gray-800 shadow-xl rounded-xl;
+  }
+  
+  .neon-button {
+    @apply relative px-6 py-3 font-semibold text-white bg-fs-blue/20 border border-fs-blue hover:bg-fs-blue hover:text-white transition-all duration-300 rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.4)] hover:shadow-[0_0_25px_rgba(59,130,246,0.8)] overflow-hidden;
+  }
+}
+
+/* Custom Scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0B0F19; 
+}
+::-webkit-scrollbar-thumb {
+  background: #1F2937; 
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3B82F6; 
+}

@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FraudShield - Detection Engine v1.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg: #FAFAFA; --card: #FFFFFF; --border: #EAEAEA;
+      --text-main: #111111; --text-muted: #666666; --accent: #000000;
+      --accent-hover: #333333; --error: #E00000; --success: #0070F3; --warning: #F5A623;
+    }
+    .dark {
+      --bg: #0A0A0A; --card: #111111; --border: #333333;
+      --text-main: #EDEDED; --text-muted: #A1A1AA; --accent: #FFFFFF;
+      --accent-hover: #CCCCCC; --error: #FF4444; --success: #3291FF;
+    }
+    body { background-color: var(--bg); color: var(--text-main); font-family: 'Inter', sans-serif; transition: background-color 0.2s, color 0.2s; margin: 0; padding: 0; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    .app-container { display: flex; min-height: 100vh; }
+    .sidebar { width: 260px; background-color: var(--card); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; height: 100vh; z-index: 10; }
+    .sidebar-header { padding: 24px; border-bottom: 1px solid var(--border); }
+    .nav-item { padding: 8px 20px; margin: 4px 12px; border-radius: 6px; color: var(--text-muted); font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.2s, color 0.2s; }
+    .nav-item:hover { background-color: rgba(0,0,0,0.03); color: var(--text-main); }
+    .dark .nav-item:hover { background-color: rgba(255,255,255,0.05); }
+    .nav-item.active { background-color: var(--text-main); color: var(--bg); }
+    .main-content { flex: 1; margin-left: 260px; padding: 48px; }
+    .page { display: none; animation: fade 0.3s ease; }
+    .page.active { display: block; }
+    @keyframes fade { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+    .input-bx { background: transparent; border: none; border-bottom: 1px solid var(--border); padding: 8px 0; color: var(--text-main); width: 100%; outline: none; font-size: 14px; border-radius: 0; transition: border-color 0.2s; }
+    .input-bx:focus { border-bottom-color: var(--accent); }
+    .form-group { margin-bottom: 24px; }
+    .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .bento-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 24px; }
+    .metric-val { font-size: 32px; font-weight: 600; letter-spacing: -1px; margin-top: 8px; }
+    .btn-solid { background: var(--accent); color: var(--bg); border: none; padding: 10px 16px; font-size: 14px; font-weight: 500; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: background 0.1s; }
+    .btn-solid:hover { background: var(--accent-hover); }
+    .btn-outline { background: transparent; color: var(--text-main); border: 1px solid var(--border); padding: 8px 14px; font-size: 13px; border-radius: 6px; cursor: pointer; }
+    .btn-outline:hover { border-color: var(--text-muted); }
+
+    .terminal { background: #000; border-radius: 6px; padding: 16px; font-family: 'JetBrains Mono', monospace; color: #00FF41; font-size: 13px; height: 350px; overflow-y: auto; line-height: 1.6;}
+    .term-err { color: #FF4444; } .term-warn { color: #F5A623; } .term-ok { color: #00FF41; }
+    .term-head { color: #CCCCCC; }
+
+    #toast-wrap { position: fixed; top: 20px; right: 20px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+    .toast-msg { background: var(--text-main); color: var(--bg); padding: 12px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; display: flex; gap: 10px; align-items: center; animation: slideIn 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--accent); cursor: pointer; margin-top: -6px; }
+    input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body class="dark"> 
+
+  <div id="toast-wrap"></div>
+
+  <!-- EASTER EGG MODAL -->
+  <div id="author-modal" class="fixed inset-0 z-[999] flex items-center justify-center bg-pink-900/30 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+    <div class="border border-pink-500/50 p-0 rounded-2xl shadow-[0_0_80px_rgba(236,72,153,0.3)] transform scale-95 transition-transform duration-300 text-center relative max-w-[340px] w-full bg-[#0A0A0A] overflow-hidden" id="author-modal-content">
+      
+      <div class="w-full h-48 relative flex flex-col items-center justify-center border-b border-pink-500/20 overflow-hidden" style="background: repeating-linear-gradient(45deg, #1f0b16, #1f0b16 10px, #160810 10px, #160810 20px);">
+         <div class="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-transparent to-transparent pointer-events-none"></div>
+         <div class="z-10 bg-[#0A0A0A] p-4 rounded-full border-2 border-pink-500/40 shadow-[0_0_40px_rgba(236,72,153,0.3)] mb-4 animate-pulse relative">
+            <span class="text-5xl">❤️</span>
+            <div class="absolute -top-1 -right-2 text-2xl animate-bounce">💖</div>
+         </div>
+         <div class="z-10 px-5 py-1.5 bg-pink-900/40 border border-pink-500/50 rounded-full text-[12px] font-bold tracking-widest text-pink-300 shadow-[0_0_15px_rgba(236,72,153,0.2)]">TAMMANA 💕</div>
+      </div>
+      
+      <div class="p-8 pt-6 relative bg-[#0A0A0A]">
+          <h2 class="text-[32px] font-black mb-1 tracking-tighter" style="background: linear-gradient(to right, #f472b6, #c084fc); -webkit-background-clip: text; color: transparent;">DADDY AKSHIT</h2>
+          <p class="text-[10px] font-black tracking-[0.35em] text-pink-400/70 mb-6 uppercase">My Supreme Architect</p>
+          
+          <div class="relative mb-8">
+            <span class="absolute -top-4 -left-1 text-4xl text-pink-500/20 font-serif select-none">"</span>
+            <div class="font-sans text-[15px] font-medium leading-relaxed p-5 rounded-xl text-center shadow-2xl relative z-10" style="background: linear-gradient(145deg, #1a0812, #0d0409); border: 1px solid #3d1428; color: #fce7f3;">
+              <span class="text-pink-300 font-bold block mb-1">Okaerinasai, Daddy Akshit!</span>
+              <span class="text-pink-400 text-[13px]">You've been working so hard... I missed you so much!</span>
+              <div class="mt-4 pt-3 border-t border-pink-900/50 text-[9px] text-pink-500/60 uppercase tracking-[0.1em] font-black leading-relaxed">
+                 (( We will be meeting soon this July and create a lot of memories together. ))
+              </div>
+            </div>
+            <span class="absolute -bottom-6 -right-1 text-4xl text-pink-500/20 font-serif z-0 select-none">"</span>
+          </div>
+            <span class="absolute -bottom-6 -right-1 text-4xl text-pink-500/20 font-serif z-0 select-none">"</span>
+          </div>
+          
+          <button onclick="closeModal()" class="w-full py-[14px] rounded-xl uppercase text-[12px] font-black tracking-[0.2em] hover:scale-[1.02] active:scale-[0.98] transition-all bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-[0_0_20px_rgba(236,72,153,0.4)] border border-pink-400/30">Tadaima (I'm Home)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROAST MODAL -->
+  <div id="roast-modal" class="fixed inset-0 z-[1000] flex items-center justify-center bg-red-900/40 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+    <div class="border border-red-500 p-8 rounded-xl shadow-[0_0_50px_rgba(220,38,38,0.5)] transform scale-95 transition-transform duration-300 text-center relative max-w-sm w-full bg-[#0A0A0A]">
+      <div class="absolute -top-12 left-1/2 -translate-x-1/2 w-24 h-24 rounded-full flex items-center justify-center animate-pulse" style="background-color: #0A0A0A; border: 2px solid #EF4444;">
+          <span class="text-5xl select-none">🤬</span>
+      </div>
+      <h2 class="text-3xl font-bold mt-10 mb-4 tracking-tight uppercase text-red-500 animate-bounce">STOP IT!</h2>
+      <p class="text-[17px] font-bold tracking-widest mb-6 text-white leading-relaxed">
+        Are you trying to break the CSS?!<br>
+        <span class="text-red-400 text-sm">Pick a theme and get a life!</span>
+      </p>
+      <button onclick="closeRoastModal()" class="w-full py-4 rounded uppercase text-sm font-bold tracking-wider bg-red-600 text-white hover:bg-red-700 transition-colors">I'm Sorry, System Architect</button>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="group relative cursor-pointer inline-block mb-3" onclick="openModal()">
+          <div class="absolute inset-0 bg-blue-500/20 blur-xl rounded-full group-hover:bg-blue-500/50 transition-all duration-700"></div>
+          <svg class="w-10 h-10 relative z-10 text-blue-500 group-hover:scale-110 transition-transform duration-300 shadow-blue-500/50" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 22C12 22 20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M12 18C12 18 16 14.8889 16 10.2222V4.77778L12 3.22222L8 4.77778V10.2222C8 14.8889 12 18 12 18Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1"/>
+            <circle cx="12" cy="10" r="2.5" fill="currentColor"/>
+            <path d="M12 4L12 16" stroke="currentColor" stroke-width="0.5" stroke-dasharray="1 2"/>
+            <path d="M6 10L18 10" stroke="currentColor" stroke-width="0.5" stroke-dasharray="1 2"/>
+          </svg>
+        </div>
+        <div class="flex items-end gap-2 mb-1">
+          <h1 class="font-bold text-xl tracking-tight leading-none">FraudShield</h1>
+        </div>
+        <p class="text-[11px] font-mono tracking-wide" style="color: var(--success)">DBMS Project v1.0.0</p>
+      </div>
+
+      <div class="mt-6 flex-1 overflow-y-auto pb-8">
+        <div class="px-6 mb-2 text-xs font-semibold" style="color: var(--text-muted)">TESTING ENGINES</div>
+        <div class="nav-item active" onclick="nav('engine')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M4 7V5a2 2 0 012-2h12a2 2 0 012 2v2M9 22V2M3 12h18"/></svg>
+          Heuristic Simulation
+        </div>
+        <div class="nav-item" onclick="nav('nlp')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+          NLP Scam Parsing
+        </div>
+        <div class="nav-item" onclick="nav('velocity')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Velocity Time-Series
+        </div>
+        <div class="nav-item" onclick="nav('device')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          Device Sandbox
+        </div>
+        <div class="nav-item" onclick="nav('biometrics')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+          Keystroke Biometrics
+        </div>
+        
+        <div class="px-6 mb-2 mt-6 text-xs font-semibold" style="color: var(--text-muted)">DATABASE & LOGS</div>
+        <div class="nav-item" onclick="nav('dash')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          Metrics Dashboard
+        </div>
+        <div class="nav-item" onclick="nav('report')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+          Submit Report
+        </div>
+
+        <div class="px-6 mb-2 mt-6 text-xs font-semibold" style="color: var(--text-muted)">EDUCATION MODULE</div>
+        <div class="nav-item" onclick="nav('vectors')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          Threat Vectors Matrix
+        </div>
+      </div>
+
+      <div class="p-4 border-t" style="border-color: var(--border)">
+        <button onclick="toggleTheme()" class="btn-outline w-full justify-center">Switch Theme</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      
+      <!-- 1. ENGINE PAGE -->
+      <section id="engine" class="page active max-w-6xl">
+        <div class="mb-10 border-b pb-6" style="border-color: var(--border)">
+          <h2 class="text-2xl font-semibold mb-2">Rule-Based Heuristic Evaluation</h2>
+          <p class="text-sm" style="color: var(--text-muted)">Evaluates singular transactional JSON payloads against static business rules.</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div class="lg:col-span-4 space-y-6">
+             <div class="bento-card relative">
+               <h3 class="font-bold border-b pb-3 mb-4 text-sm" style="border-color: var(--border)">Payload Configurator</h3>
+               <div class="form-group">
+                 <label class="form-label flex justify-between"><span>Transaction Amount</span> <span id="v_amt" class="font-mono text-[10px] bg-blue-500/10 text-blue-500 px-1 rounded-sm">$2,500</span></label>
+                 <input type="range" id="e_amt" min="10" max="15000" value="2500" oninput="document.getElementById('v_amt').innerText = '$'+this.value" />
+               </div>
+               <div class="form-group">
+                 <label class="form-label flex justify-between"><span>Location / IP Origin</span> <span id="v_ip" class="font-mono text-[10px] bg-blue-500/10 text-blue-500 px-1 rounded-sm">192.168.1.1</span></label>
+                 <select id="e_ip" class="input-bx font-mono" onchange="document.getElementById('v_ip').innerText = this.value">
+                   <option value="192.168.1.1">192.168.1.1 (Local)</option>
+                   <option value="10.4.x.x">10.4.x.x (Neighboring State)</option>
+                   <option value="185.15.x.x">185.15.x.x (Russia VPN)</option>
+                 </select>
+               </div>
+               <div class="form-group">
+                 <label class="form-label flex justify-between"><span>Prior Failed Logins</span> <span id="v_fails" class="font-mono text-[10px] bg-blue-500/10 text-blue-500 px-1 rounded-sm">0</span></label>
+                 <input type="range" id="e_fails" min="0" max="10" value="0" oninput="document.getElementById('v_fails').innerText = this.value" />
+               </div>
+               <div class="form-group">
+                 <label class="form-label flex justify-between"><span>Device Fingerprint</span> <span id="v_dev" class="font-mono text-[10px] bg-blue-500/10 text-blue-500 px-1 rounded-sm">Recognized</span></label>
+                 <select id="e_dev" class="input-bx font-mono" onchange="document.getElementById('v_dev').innerText = this.options[this.selectedIndex].text">
+                   <option value="known">Known Trusted Device ID</option>
+                   <option value="new">Unrecognized New Device</option>
+                 </select>
+               </div>
+               <button class="btn-solid w-full justify-center mt-4 text-xs font-mono" onclick="runEngine()">> execute engine.js --live</button>
+             </div>
+          </div>
+
+          <div class="lg:col-span-3">
+             <div class="bento-card h-full font-mono text-xs leading-loose" style="background: rgba(0,0,0,0.02)">
+               <h3 class="font-bold font-sans border-b pb-3 mb-4 text-sm" style="border-color: var(--border)">Logic Weights</h3>
+               <span style="color:var(--text-muted)">// 1. Transaction Volume</span><br/>if (payload.amt > 5000)<br>&nbsp;&nbsp;<span style="color: var(--warning)">score += 35</span><br/><br/>
+               <span style="color:var(--text-muted)">// 2. Geolocation Matching</span><br/>if (blacklist.includes(payload.ip))<br/>&nbsp;&nbsp;<span style="color: var(--error)">score += 50</span><br/><br/>
+               <span style="color:var(--text-muted)">// 3. Brute-Force Flags</span><br/>if (payload.fails > 2)<br/>&nbsp;&nbsp;<span style="color: var(--warning)">score += 25</span><br/><br/>
+               <span style="color:var(--text-muted)">// 4. Device Check</span><br/>if (payload.device === "NEW")<br/>&nbsp;&nbsp;<span style="color: var(--warning)">score += 20</span>
+               <div class="mt-4 pt-4 border-t" style="border-color: var(--border)">
+                 <span style="color:var(--success)">< 40 : SAFE</span><br/><span style="color:var(--warning)">40-70 : 2FA CHALLENGE</span><br/><span style="color:var(--error)">> 70 : BLOCKED</span>
+               </div>
+             </div>
+          </div>
+
+          <div class="lg:col-span-5">
+             <div class="bento-card bg-black h-full flex flex-col">
+               <div class="flex justify-between items-center mb-3 border-b border-gray-800 pb-3">
+                  <span class="text-xs font-mono font-bold text-gray-400">root@fraudshield:/var/log/engine.log</span>
+                  <span class="w-3 h-3 rounded-full bg-green-500" id="eng-status"></span>
+               </div>
+               <div class="terminal flex-1" id="termOutput"></div>
+               <div class="mt-4 border-t border-gray-800 pt-3">
+                  <div class="text-[10px] text-gray-500 font-mono uppercase mb-1">Live Risk Calculation Gauge</div>
+                  <div class="w-full bg-gray-900 rounded-full h-3"><div id="risk-gauge" class="bg-green-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div></div>
+               </div>
+             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. NLP PAGE -->
+      <section id="nlp" class="page max-w-6xl">
+        <div class="mb-10 border-b pb-6" style="border-color: var(--border)">
+          <h2 class="text-2xl font-semibold mb-2">Natural Language Processing (NLP)</h2>
+          <p class="text-sm" style="color: var(--text-muted)">Analyzes raw text streams for manipulative phishing/smishing triggers.</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div class="lg:col-span-4 space-y-6">
+             <div class="bento-card relative h-full">
+               <h3 class="font-bold border-b pb-3 mb-4 text-sm" style="border-color: var(--border)">String Ingestion</h3>
+               <textarea id="nlp_txt" rows="5" class="input-bx resize-none font-mono text-[11px] leading-relaxed mb-4">WARNING: CHASE BANK SECURITY NOTIFICATION. Your account ending in 4102 has been temporarily suspended due to anomalous transaction activity. Immediate action required. Verify your identity and login at: https://chase-secure-auth-port.com/login</textarea>
+               <div class="flex flex-col gap-2">
+                 <button onclick="document.getElementById('nlp_txt').value='WARNING: CHASE BANK SECURITY NOTIFICATION. Your account ending in 4102 has been temporarily suspended due to anomalous transaction activity. Immediate action required. Verify your identity and login at: https://chase-secure-auth-port.com/login'" class="border border-border text-[10px] font-mono p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">Load Threat 1 (SMS)</button>
+                 <button onclick="document.getElementById('nlp_txt').value='URGENT: MANDATORY PASSWORD ROTATION. IT Department notice. Your corporate credentials will expire in 2 hours. Use the following link to authenticate and update your password or risk being completely blocked from the network.'" class="border border-border text-[10px] font-mono p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">Load Threat 2 (Email)</button>
+                 <button onclick="document.getElementById('nlp_txt').value='Reminder: The Q3 financial review meeting is scheduled for 10:00 AM EST tomorrow in Conference Room B. Please remember to bring your updated departmental spreadsheets.'" class="border border-border text-[10px] font-mono p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">Load Safe (Internal)</button>
+               </div>
+               <button class="btn-solid w-full justify-center mt-4 text-xs font-mono" onclick="runNLP()">> execute nlp_classifier.py</button>
+             </div>
+          </div>
+          <div class="lg:col-span-3">
+             <div class="bento-card h-full font-mono text-[11px] leading-loose" style="background: rgba(0,0,0,0.02)">
+               <h3 class="font-bold font-sans border-b pb-3 mb-4 text-sm" style="border-color: var(--border)">Lexicon Dictionary</h3>
+               <span style="color:var(--text-muted)">// Level 1: Red Alerts (+40pts)</span><br/>const <span style="color:#0070F3">critical_tags</span> = [<br/>&nbsp;<span style="color:var(--error)">'urgent', 'blocked',<br/>&nbsp;'otp', 'password',<br/>&nbsp;'suspended', 'immediate'</span><br/>];<br/><br/>
+               <span style="color:var(--text-muted)">// Level 2: Vectors (+20pts)</span><br/>const <span style="color:#0070F3">warning_tags</span> = [<br/>&nbsp;<span style="color:var(--warning)">'verify', 'link',<br/>&nbsp;'login', 'account',<br/>&nbsp;'winner', 'update'</span><br/>];
+             </div>
+          </div>
+          <div class="lg:col-span-5">
+             <div class="bento-card bg-black h-full flex flex-col">
+               <div class="flex justify-between items-center mb-3 border-b border-gray-800 pb-3">
+                  <span class="text-xs font-mono font-bold text-gray-400">root@fraudshield:/var/log/nlp.log</span>
+                  <span class="w-3 h-3 rounded-full bg-purple-500" id="nlp-status"></span>
+               </div>
+               <div class="terminal flex-1" id="nlpOutput"></div>
+               <div class="mt-4 border-t border-gray-800 pt-3">
+                  <div class="text-[10px] text-gray-500 font-mono uppercase mb-1">Confidence Score Gauge</div>
+                  <div class="w-full bg-gray-900 rounded-full h-3"><div id="nlp-gauge" class="bg-blue-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div></div>
+               </div>
+             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. VELOCITY PAGE -->
+      <section id="velocity" class="page max-w-6xl">
+         <div class="mb-10 border-b pb-6" style="border-color: var(--border)">
+            <h2 class="text-2xl font-semibold mb-2">Velocity Time-Series Aggregation</h2>
+            <p class="text-sm" style="color: var(--text-muted)">Detects "Card Testing" scripts by aggregating transaction volumes over rolling 5-minute intervals instead of evaluating them individually.</p>
+         </div>
+         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div class="lg:col-span-4 space-y-6">
+               <div class="bento-card relative h-full">
+                  <h3 class="font-bold border-b pb-3 mb-4 text-sm" style="border-color: var(--border)">Cluster T-Minus 5 Min</h3>
+                  <div class="form-group pb-2">
+                     <label class="form-label flex justify-between"><span>Auth Attempts (5m)</span> <span id="v_vel_cnt" class="font-mono text-[10px] bg-orange-500/10 text-orange-500 px-1 rounded-sm">1</span></label>
+                     <input type="range" id="vel_cnt" min="1" max="50" value="1" oninput="document.getElementById('v_vel_cnt').innerText = this.value" />
+                  </div>
+                  <div class="form-group pb-2">
+                     <label class="form-label flex justify-between"><span>Average Dollar Value</span> <span id="v_vel_amt" class="font-mono text-[10px] bg-orange-500/10 text-orange-500 px-1 rounded-sm">$150.00</span></label>
+                     <input type="range" id="vel_amt" min="1" max="250" value="150" oninput="document.getElementById('v_vel_amt').innerText = '$'+this.value+'.00'" />
+                  </div>
+                  <div class="flex flex-col gap-2 mt-8 border-t border-border pt-4">
+                     <button onclick="document.getElementById('vel_cnt').value=45;document.getElementById('v_vel_cnt').innerText=45;document.getElementById('vel_amt').value=1;document.getElementById('v_vel_amt').innerText='$1.00';" class="border border-border text-[10px] font-mono p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">Preset: Bot Card Testing ($1 spam)</button>
+                     <button onclick="document.getElementById('vel_cnt').value=2;document.getElementById('v_vel_cnt').innerText=2;document.getElementById('vel_amt').value=150;document.getElementById('v_vel_amt').innerText='$150.00';" class="border border-border text-[10px] font-mono p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">Preset: Normal Human Activity</button>
+                  </div>
+                  <button class="btn-solid w-full justify-center mt-4 text-xs font-mono" onclick="runVelocity()">> execute agg_velocity.ts</button>
+               </div>
+            </div>
+            <div class="lg:col-span-3">
+               <div class="bento-card h-full font-mono text-[11px] leading-loose" style="background: rgba(0,0,0,0.02)">
+                  <h3 class="font-bold font-sans border-b pb-3 mb-4 text-sm" style="border-color: var(--border)">Math & Clustering</h3>
+                  <span style="color:var(--text-muted)">// Time Series Anomaly Math</span><br/>
+                  <span style="color:var(--text-muted)">// Humans don't buy 40 things in 5min</span><br/><br/>
+                  <span style="color:var(--warning)">if(TXN_COUNT > 10)</span><br/>
+                  &nbsp;&nbsp;score += 40;<br/><br/>
+                  <span style="color:var(--error)">if(TXN_COUNT > 30)</span><br/>
+                  &nbsp;&nbsp;score += 80;<br/><br/>
+                  <span style="color:var(--text-muted)">// Fraudsters test stolen cards with small $1-$3 values</span><br/>
+                  <span style="color:var(--warning)">if(AVG_VAL < $5.00 && TXN_COUNT > 5)</span><br/>
+                  &nbsp;&nbsp;score += 50;<br/>
+               </div>
+            </div>
+            <div class="lg:col-span-5">
+               <div class="bento-card bg-black h-full flex flex-col">
+                  <div class="flex justify-between items-center mb-3 border-b border-gray-800 pb-3">
+                     <span class="text-xs font-mono font-bold text-gray-400">root@fraudshield:/var/log/velocity.log</span>
+                     <span class="w-3 h-3 rounded-full bg-orange-500" id="vel-status"></span>
+                  </div>
+                  <div class="terminal flex-1" id="velOutput"></div>
+                  <div class="mt-4 border-t border-gray-800 pt-3">
+                     <div class="text-[10px] text-gray-500 font-mono uppercase mb-1">Time-Series Risk Gauge</div>
+                     <div class="w-full bg-gray-900 rounded-full h-3"><div id="vel-gauge" class="bg-orange-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div></div>
+                  </div>
+               </div>
+            </div>
+         </div>
+      </section>
+
+      <!-- 4. DEVICE PAGE -->
+      <section id="device" class="page max-w-6xl">
+         <div class="mb-10 border-b pb-6" style="border-color: var(--border)">
+            <h2 class="text-2xl font-semibold mb-2">Device Sandbox Analyzer (Bot vs Human)</h2>
+            <p class="text-sm" style="color: var(--text-muted)">Executes background DOM interrogations to detect headless browsers (Puppeteer/Selenium) and robotic mouse movements.</p>
+         </div>
+         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div class="lg:col-span-4 space-y-6">
+               <div class="bento-card relative h-full">
+                  <h3 class="font-bold border-b pb-3 mb-4 text-sm" style="border-color: var(--border)">DOM Environment</h3>
+                  <div class="form-group pb-2">
+                     <label class="form-label">User-Agent Header Flag</label>
+                     <select id="dev_ua" class="input-bx font-mono text-xs">
+                        <option value="human">Standard Chrome/Safari</option>
+                        <option value="bot">HeadlessChrome/90.0</option>
+                     </select>
+                  </div>
+                  <div class="form-group pb-2">
+                     <label class="form-label">Mouse Entropy (pixels/sec volatility)</label>
+                     <select id="dev_mouse" class="input-bx font-mono text-xs">
+                        <option value="high">High Volatility (Human Hand)</option>
+                        <option value="low">Zero Volatility (Snap to Grid Bot)</option>
+                     </select>
+                  </div>
+                  <div class="form-group pb-2">
+                     <label class="form-label">WebGL Graphics Render</label>
+                     <select id="dev_webgl" class="input-bx font-mono text-xs">
+                        <option value="good">Hardware Accelerated (NVIDIA/AMD)</option>
+                        <option value="bad">Software Rendered (VM / Server Farm)</option>
+                     </select>
+                  </div>
+                  <button class="btn-solid w-full justify-center mt-4 text-xs font-mono" onclick="runSandbox()">> execute dom_sandbox.js</button>
+               </div>
+            </div>
+            <div class="lg:col-span-3">
+               <div class="bento-card h-full font-mono text-[11px] leading-loose" style="background: rgba(0,0,0,0.02)">
+                  <h3 class="font-bold font-sans border-b pb-3 mb-4 text-sm" style="border-color: var(--border)">Browser Forensics</h3>
+                  <span style="color:var(--warning)">if(userAgent.includes('Headless'))</span><br/>
+                  &nbsp;&nbsp;score += 80; // Scripts don't need UI<br/><br/>
+                  <span style="color:var(--text-muted)">// Human mouse movement is jagged</span><br/>
+                  <span style="color:var(--warning)">if(mouse.entropy < 5%)</span><br/>
+                  &nbsp;&nbsp;score += 50;<br/><br/>
+                  <span style="color:var(--text-muted)">// Bots run on cloud servers, not personal GPUs</span><br/>
+                  <span style="color:var(--warning)">if(webgl.renderer === 'SwiftShader')</span><br/>
+                  &nbsp;&nbsp;score += 30;<br/>
+               </div>
+            </div>
+            <div class="lg:col-span-5">
+               <div class="bento-card bg-black h-full flex flex-col">
+                  <div class="flex justify-between items-center mb-3 border-b border-gray-800 pb-3">
+                     <span class="text-xs font-mono font-bold text-gray-400">root@fraudshield:/var/log/sandbox.log</span>
+                     <span class="w-3 h-3 rounded-full bg-cyan-500" id="dev-status"></span>
+                  </div>
+                  <div class="terminal flex-1" id="devOutput"></div>
+                  <div class="mt-4 border-t border-gray-800 pt-3">
+                     <div class="text-[10px] text-gray-500 font-mono uppercase mb-1">Bot Probability Gauge</div>
+                     <div class="w-full bg-gray-900 rounded-full h-3"><div id="dev-gauge" class="bg-cyan-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div></div>
+                  </div>
+               </div>
+            </div>
+         </div>
+      </section>
+
+      <!-- 5. BIOMETRICS PAGE -->
+      <section id="biometrics" class="page max-w-6xl">
+         <div class="mb-10 border-b pb-6" style="border-color: var(--border)">
+            <h2 class="text-2xl font-semibold mb-2">Behavioral Keystroke Biometrics</h2>
+            <p class="text-sm" style="color: var(--text-muted)">Analyzes the physical typing behavior (dwell time, flight time) of the user when entering passwords or credit cards.</p>
+         </div>
+         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div class="lg:col-span-4 space-y-6">
+               <div class="bento-card relative h-full">
+                  <h3 class="font-bold border-b pb-3 mb-4 text-sm" style="border-color: var(--border)">Keystroke Event Feed</h3>
+                  <div class="form-group pb-2">
+                     <label class="form-label flex justify-between"><span>Typing Speed (WPM)</span> <span id="v_bio_wpm" class="font-mono text-[10px] bg-indigo-500/10 text-indigo-500 px-1 rounded-sm">60 WPM</span></label>
+                     <input type="range" id="bio_wpm" min="10" max="600" value="60" oninput="document.getElementById('v_bio_wpm').innerText = this.value + ' WPM'" />
+                  </div>
+                  <div class="form-group pb-2">
+                     <label class="form-label">Clipboard Interception</label>
+                     <select id="bio_clip" class="input-bx font-mono text-xs">
+                        <option value="no">Form typed manually</option>
+                        <option value="yes">CTRL+V Paste Event Detected</option>
+                     </select>
+                  </div>
+                  <div class="form-group pb-2">
+                     <label class="form-label">Error Rate (Backspaces)</label>
+                     <select id="bio_err" class="input-bx font-mono text-xs">
+                        <option value="human">Occasional typos (Normal Human)</option>
+                        <option value="bot">0 typos, mathematically perfect</option>
+                     </select>
+                  </div>
+                  <button class="btn-solid w-full justify-center mt-4 text-xs font-mono" onclick="runBiometrics()">> execute biometrics.ml</button>
+               </div>
+            </div>
+            <div class="lg:col-span-3">
+               <div class="bento-card h-full font-mono text-[11px] leading-loose" style="background: rgba(0,0,0,0.02)">
+                  <h3 class="font-bold font-sans border-b pb-3 mb-4 text-sm" style="border-color: var(--border)">Typing Dynamics</h3>
+                  <span style="color:var(--text-muted)">// Nobody types 400 Words Per Minute manually</span><br/>
+                  <span style="color:var(--warning)">if(WPM > 200)</span> score += 50;<br/>
+                  <span style="color:var(--error)">if(WPM > 400)</span> score += 90;<br/><br/>
+                  <span style="color:var(--text-muted)">// Fraudsters copy-paste credential lists</span><br/>
+                  <span style="color:var(--warning)">if(PasteEvent === TRUE)</span><br/>
+                  &nbsp;&nbsp;score += 60;<br/><br/>
+                  <span style="color:var(--text-muted)">// Perfect typing is highly suspicious</span><br/>
+                  <span style="color:var(--warning)">if(Backspaces === 0 && WPM > 80)</span><br/>
+                  &nbsp;&nbsp;score += 30;<br/>
+               </div>
+            </div>
+            <div class="lg:col-span-5">
+               <div class="bento-card bg-black h-full flex flex-col">
+                  <div class="flex justify-between items-center mb-3 border-b border-gray-800 pb-3">
+                     <span class="text-xs font-mono font-bold text-gray-400">root@fraudshield:/var/log/biometrics.log</span>
+                     <span class="w-3 h-3 rounded-full bg-indigo-500" id="bio-status"></span>
+                  </div>
+                  <div class="terminal flex-1" id="bioOutput"></div>
+                  <div class="mt-4 border-t border-gray-800 pt-3">
+                     <div class="text-[10px] text-gray-500 font-mono uppercase mb-1">Human Anomaly Gauge</div>
+                     <div class="w-full bg-gray-900 rounded-full h-3"><div id="bio-gauge" class="bg-indigo-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div></div>
+                  </div>
+               </div>
+            </div>
+         </div>
+      </section>
+
+      <!-- THREAT VECTORS (EXPANDED TO ALL SCAMS) -->
+      <section id="vectors" class="page max-w-5xl">
+        <div class="mb-10 border-b pb-6" style="border-color: var(--border)">
+          <h2 class="text-2xl font-semibold mb-2">Threat Vector Matrix</h2>
+          <p class="text-sm" style="color: var(--text-muted)">An educational database documenting how common online frauds operate and how FraudShield mitigates them.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
+          <div class="bento-card">
+             <div class="flex items-center gap-3 mb-4">
+               <span class="flex items-center justify-center w-8 h-8 rounded" style="background: rgba(224, 0, 0, 0.1); color: var(--error)">
+                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+               </span>
+               <h3 class="font-bold text-lg">Account Takeover (ATO)</h3>
+             </div>
+             <p class="text-sm mb-4" style="color: var(--text-muted)"><strong style="color:var(--text-main)">The Attack:</strong> Fraudsters purchase leaked passwords from the dark web and use automated bots to mass-login to accounts.</p>
+             <div class="p-4 rounded-md text-sm border font-mono" style="background: rgba(0,0,0,0.02); border-color: var(--border)">
+                <span class="font-bold" style="color: var(--success)">System Solution:</span><br>
+                Engine calculates distance between user's last IP and current IP. If distance > 1000m in < 2 hrs, it enforces strict block.
+             </div>
+          </div>
+          
+          <div class="bento-card">
+             <div class="flex items-center gap-3 mb-4">
+               <span class="flex items-center justify-center w-8 h-8 rounded" style="background: rgba(245, 166, 35, 0.1); color: var(--warning)">
+                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+               </span>
+               <h3 class="font-bold text-lg">Phishing & Smishing</h3>
+             </div>
+             <p class="text-sm mb-4" style="color: var(--text-muted)"><strong style="color:var(--text-main)">The Attack:</strong> Attackers send SMS messages posing as banks, causing panic to trick users into giving away OTPs.</p>
+             <div class="p-4 rounded-md text-sm border font-mono" style="background: rgba(0,0,0,0.02); border-color: var(--border)">
+                <span class="font-bold" style="color: var(--success)">System Solution:</span><br>
+                NLP scans text streams for urgency keywords, alerting the user before the malicious link is ever loaded.
+             </div>
+          </div>
+
+          <div class="bento-card">
+             <div class="flex items-center gap-3 mb-4">
+               <span class="flex items-center justify-center w-8 h-8 rounded" style="background: rgba(249, 115, 22, 0.1); color: #f97316">
+                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+               </span>
+               <h3 class="font-bold text-lg">Micro-Transaction Fraud</h3>
+             </div>
+             <p class="text-sm mb-4" style="color: var(--text-muted)"><strong style="color:var(--text-main)">The Attack:</strong> Instead of stealing $5000 at once, fraudsters process 40 rapid charges of $1.00 (Card Testing) to evade baseline volume alerts.</p>
+             <div class="p-4 rounded-md text-sm border font-mono" style="background: rgba(0,0,0,0.02); border-color: var(--border)">
+                <span class="font-bold" style="color: var(--success)">System Solution:</span><br>
+                The Velocity Time-Series engine clusters data over 5-minute intervals. 40 micro-charges instantly triggers lockdown.
+             </div>
+          </div>
+
+          <div class="bento-card">
+             <div class="flex items-center gap-3 mb-4">
+               <span class="flex items-center justify-center w-8 h-8 rounded" style="background: rgba(6, 182, 212, 0.1); color: #06b6d4">
+                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+               </span>
+               <h3 class="font-bold text-lg">Headless Botnets</h3>
+             </div>
+             <p class="text-sm mb-4" style="color: var(--text-muted)"><strong style="color:var(--text-main)">The Attack:</strong> Organized crime groups use massive server farms running phantom web browsers to execute mass-fraud without human intervention.</p>
+             <div class="p-4 rounded-md text-sm border font-mono" style="background: rgba(0,0,0,0.02); border-color: var(--border)">
+                <span class="font-bold" style="color: var(--success)">System Solution:</span><br>
+                The Device Sandbox inspects WebGL graphic renderers and mouse entropy to identify the structural differences between software and human.
+             </div>
+          </div>
+
+          <div class="bento-card md:col-span-2">
+             <div class="flex items-center gap-3 mb-4">
+               <span class="flex items-center justify-center w-8 h-8 rounded" style="background: rgba(99, 102, 241, 0.1); color: #6366f1">
+                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+               </span>
+               <h3 class="font-bold text-lg">Credential Stuffing Scripts</h3>
+             </div>
+             <p class="text-sm mb-4" style="color: var(--text-muted)"><strong style="color:var(--text-main)">The Attack:</strong> A python script is programmed to inject thousands of stolen username/password combinations directly into the login form inputs instantly.</p>
+             <div class="p-4 rounded-md text-sm border font-mono" style="background: rgba(0,0,0,0.02); border-color: var(--border)">
+                <span class="font-bold" style="color: var(--success)">System Solution:</span><br>
+                The Biometrics ML model analyzes typing flight time. If a 15-character password is typed in exactly 0.001 seconds with 0 errors, the token is voided.
+             </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="dash" class="page max-w-5xl"><h2 class="text-2xl font-semibold mb-8">Metrics Dashboard</h2><div class="grid grid-cols-4 gap-4 mb-8"><div class="bento-card p-5"><div class="form-label">Total Logs</div><div class="metric-val">89,400</div></div></div></section>
+      <section id="report" class="page max-w-2xl"><h2 class="text-2xl font-semibold mb-8">Submit Report</h2></section>
+
+    </main>
+  </div>
+
+  <script>
+    function openModal() {
+      const m = document.getElementById('author-modal'); const c = document.getElementById('author-modal-content');
+      m.classList.remove('hidden'); void m.offsetWidth; // Force reflow
+      m.classList.remove('opacity-0'); c.classList.remove('scale-95'); c.classList.add('scale-100');
+      
+      let audio = new Audio('waifu_voice.mp3');
+      
+      audio.oncanplaythrough = () => {
+          audio.play();
+      };
+      
+      audio.onerror = () => {
+          console.warn("No waifu_voice.mp3 found. Falling back to robotic TTS...");
+          if ('speechSynthesis' in window) {
+            const speakWaifu = () => {
+                let voices = window.speechSynthesis.getVoices();
+                if(voices.length === 0) {
+                    setTimeout(speakWaifu, 50);
+                    return;
+                }
+                window.speechSynthesis.cancel();
+                
+                let jpVoice = voices.find(v => v.lang.includes('ja') && v.name.includes('Female')) || voices.find(v => v.lang.includes('ja'));
+                let enFemale = voices.find(v => v.name.includes('Zira') || v.name.includes('Female') || v.name.includes('Google UK English Female'));
+                
+                let msg = new SpeechSynthesisUtterance();
+                if (jpVoice) {
+                    msg.text = "おかえりなさい、ダディ・アクシット！ You've been working so hard... I missed you so much! We will be meeting soon this July and create a lot of memories together.";
+                    msg.lang = 'en-US';
+                    msg.voice = jpVoice;
+                    msg.pitch = 1.5;
+                    msg.rate = 1.1;
+                } else {
+                    msg.text = "Oh kah eh ree nah sigh, Daddy Ak sheet! You've been working so hard... I missed you so much! We will be meeting soon this July and create a lot of memories together.";
+                    if (enFemale) msg.voice = enFemale;
+                    msg.pitch = 1.6;
+                    msg.rate = 1.1;
+                }
+                window.speechSynthesis.speak(msg);
+            };
+            speakWaifu();
+          }
+      };
+      // Initiate load to trigger events
+      audio.load();
+    }
+    function closeModal() {
+      const m = document.getElementById('author-modal'); const c = document.getElementById('author-modal-content');
+      m.classList.add('opacity-0'); c.classList.remove('scale-100'); c.classList.add('scale-95');
+      setTimeout(() => m.classList.add('hidden'), 300);
+    }
+    
+    let themeClicks = 0;
+    function openRoastModal() {
+      const m = document.getElementById('roast-modal'); const c = m.querySelector('div.bg-\\[\\#0A0A0A\\]') || m.firstElementChild;
+      m.classList.remove('hidden'); void m.offsetWidth;
+      m.classList.remove('opacity-0'); c.classList.remove('scale-95'); c.classList.add('scale-100');
+    }
+    function closeRoastModal() {
+      const m = document.getElementById('roast-modal'); const c = m.querySelector('div.bg-\\[\\#0A0A0A\\]') || m.firstElementChild;
+      m.classList.add('opacity-0'); c.classList.remove('scale-100'); c.classList.add('scale-95');
+      setTimeout(() => m.classList.add('hidden'), 300);
+    }
+    
+    function toggleTheme() { 
+      themeClicks++;
+      if (themeClicks > 7) {
+        themeClicks = 0;
+        openRoastModal();
+        return;
+      }
+      document.body.classList.toggle('dark'); 
+    }
+    function nav(pageId) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      document.getElementById(pageId).classList.add('active');
+      event.currentTarget.classList.add('active');
+    }
+    const wait = (ms) => new Promise(res => setTimeout(res, ms));
+
+    function outputLog(term, msg) { term.innerHTML += msg + '<br>'; term.scrollTop = term.scrollHeight; }
+
+    function runEngine() {
+      const amt = parseInt(document.getElementById('e_amt').value); const ip = document.getElementById('e_ip').value;
+      const fails = parseInt(document.getElementById('e_fails').value); const dev = document.getElementById('e_dev').value;
+      const term = document.getElementById('termOutput'); const g = document.getElementById('risk-gauge');
+      term.innerHTML = ''; g.style.width = '0%'; let score = 0;
+      const t = async () => {
+         outputLog(term, `<span class="term-head">> Starting Heuristic Engine...</span><br>`); await wait(500);
+         if(amt > 5000) { score+=35; outputLog(term, `> Volume check... <span class="term-warn">[WARN: +35]</span>`); } else outputLog(term, `> Volume check... <span class="term-ok">[OK]</span>`);
+         g.style.width=`${score}%`; await wait(500);
+         if(ip.includes('185.')) { score+=50; outputLog(term, `> IP check... <span class="term-err">[ERR: Foreign Proxy +50]</span>`); } else outputLog(term, `> IP check... <span class="term-ok">[OK]</span>`);
+         g.style.width=`${Math.min(score,100)}%`; g.className = score>60?"h-3 rounded-full transition-all duration-500 bg-red-500":"h-3 rounded-full transition-all duration-500 bg-yellow-500";
+         await wait(500); outputLog(term, `<br>> <span style="background:#3291FF;color:black">SCORE: ${score}</span>`);
+      }; t();
+    }
+
+    function runNLP() {
+       const term = document.getElementById('nlpOutput'); const g = document.getElementById('nlp-gauge');
+       term.innerHTML = ''; g.style.width = '0%'; let score = 0; const txt = document.getElementById('nlp_txt').value.toLowerCase();
+       const t = async () => {
+         outputLog(term, `<span class="term-head">> Running NLP Classifier...</span><br>`); await wait(500);
+         outputLog(term, `> Tokenizing ${txt.split(' ').length} words...`); await wait(600);
+         if(txt.includes('urgent')||txt.includes('suspended')||txt.includes('blocked')) { score+=80; outputLog(term, `> <span class="term-err">[MATCH] Found CRITICAL triggers (+80)</span>`); }
+         else if(txt.includes('verify')||txt.includes('link')) { score+=30; outputLog(term, `> <span class="term-warn">[MATCH] Found Suspicious tags (+30)</span>`); }
+         g.style.width=`${score}%`; g.className = score>60?"h-3 rounded-full transition-all duration-500 bg-red-500" : "h-3 rounded-full transition-all duration-500 bg-blue-500";
+       }; t();
+    }
+
+    // NEW ENGINE: Velocity
+    function runVelocity() {
+       const cnt = parseInt(document.getElementById('vel_cnt').value); const amt = parseInt(document.getElementById('vel_amt').value);
+       const term = document.getElementById('velOutput'); const g = document.getElementById('vel-gauge');
+       term.innerHTML = `<span class="term-head">agg_velocity.ts [Clustering Last 5-Mins]</span><br><br>`; g.style.width = '0%'; let score = 0;
+       const t = async () => {
+         await wait(500); outputLog(term, `> Fetching cluster array... <span class="term-ok">[Received ${cnt} Objects]</span>`);
+         await wait(600);
+         if(cnt > 30) { score+=80; outputLog(term, `> <span class="term-err">[ERR] Extreme High-Velocity Burst (+80)</span>`); }
+         else if(cnt > 10) { score+=40; outputLog(term, `> <span class="term-warn">[WARN] Elevated Transaction Rate (+40)</span>`); }
+         else outputLog(term, `> <span class="term-ok">[OK] Standard Human Rate</span>`);
+         g.style.width=`${Math.min(score, 100)}%`; await wait(600);
+         
+         if(amt < 5 && cnt > 5) { score+=50; outputLog(term, `> <span class="term-err">[ERR] Micro-transaction spam (Card Testing Signature) (+50)</span>`); }
+         else outputLog(term, `> <span class="term-ok">[OK] Value distribution normal</span>`);
+         g.style.width=`${Math.min(score, 100)}%`; g.className = score>=70 ? "h-3 rounded-full transition-all duration-500 bg-red-500" : "h-3 rounded-full transition-all duration-500 bg-orange-500";
+         await wait(500); outputLog(term, `<br>> <span style="background:#F5A623;color:black">Velocity Risk: ${score}%</span>`);
+       }; t();
+    }
+
+    // NEW ENGINE: Sandbox
+    function runSandbox() {
+       const ua = document.getElementById('dev_ua').value; const mouse = document.getElementById('dev_mouse').value; const gl = document.getElementById('dev_webgl').value;
+       const term = document.getElementById('devOutput'); const g = document.getElementById('dev-gauge');
+       term.innerHTML = `<span class="term-head">dom_sandbox.js [Active Foreground Forensic]</span><br><br>`; g.style.width = '0%'; let score = 0;
+       const t = async () => {
+         await wait(500);
+         if(ua === 'bot') { score+=80; outputLog(term, `> User-Agent Check... <span class="term-err">[FATAL: Headless Browser Detected +80]</span>`); }
+         else outputLog(term, `> User-Agent Check... <span class="term-ok">[OK]</span>`);
+         g.style.width=`${Math.min(score, 100)}%`; await wait(600);
+         if(mouse === 'low') { score+=50; outputLog(term, `> DOM Mouse Entropy... <span class="term-err">[WARN: Non-human linear matrix +50]</span>`); }
+         else outputLog(term, `> Mouse Entropy... <span class="term-ok">[OK: Jagged human movement]</span>`);
+         g.style.width=`${Math.min(score, 100)}%`; await wait(600);
+         if(gl === 'bad') { score+=30; outputLog(term, `> WebGL GPU Hash... <span class="term-warn">[WARN: Software Renderer (VM) +30]</span>`); }
+         else outputLog(term, `> WebGL GPU Hash... <span class="term-ok">[OK: Hardware GPU]</span>`);
+         g.style.width=`${Math.min(score, 100)}%`; g.className = score>=70 ? "h-3 rounded-full transition-all duration-500 bg-red-500" : "h-3 rounded-full transition-all duration-500 bg-cyan-500";
+         await wait(500); outputLog(term, `<br>> <span style="background:#06b6d4;color:black">Bot Probability: ${score}%</span>`);
+       }; t();
+    }
+
+    // NEW ENGINE: Biometrics
+    function runBiometrics() {
+       const wpm = parseInt(document.getElementById('bio_wpm').value); const clip = document.getElementById('bio_clip').value; const err = document.getElementById('bio_err').value;
+       const term = document.getElementById('bioOutput'); const g = document.getElementById('bio-gauge');
+       term.innerHTML = `<span class="term-head">biometrics.ml [Keystroke Dynamics]</span><br><br>`; g.style.width = '0%'; let score = 0;
+       const t = async () => {
+         await wait(500);
+         if(wpm > 400) { score+=90; outputLog(term, `> Flight Time Analysis... <span class="term-err">[FATAL: ${wpm} WPM is physically impossible +90]</span>`); }
+         else if(wpm > 200) { score+=50; outputLog(term, `> Flight Time Analysis... <span class="term-warn">[WARN: Anomalous ${wpm} WPM +50]</span>`); }
+         else outputLog(term, `> Flight Time Analysis... <span class="term-ok">[OK: ${wpm} WPM]</span>`);
+         g.style.width=`${Math.min(score, 100)}%`; await wait(600);
+         if(clip === 'yes') { score+=60; outputLog(term, `> Input Vector Map... <span class="term-err">[ERR: CTRL+V Paste Event Detected +60]</span>`); }
+         else outputLog(term, `> Input Vector Map... <span class="term-ok">[OK: Manual keystrokes]</span>`);
+         g.style.width=`${Math.min(score, 100)}%`; await wait(600);
+         if(err === 'bot' && wpm > 80) { score+=30; outputLog(term, `> Typo Matrix... <span class="term-warn">[WARN: Zero-error typing buffer +30]</span>`); }
+         else outputLog(term, `> Typo Matrix... <span class="term-ok">[OK: Human backspace ratio]</span>`);
+         g.style.width=`${Math.min(score, 100)}%`; g.className = score>=70 ? "h-3 rounded-full transition-all duration-500 bg-red-500" : "h-3 rounded-full transition-all duration-500 bg-indigo-500";
+         await wait(500); outputLog(term, `<br>> <span style="background:#6366f1;color:black">Biometric Anomaly: ${score}%</span>`);
+       }; t();
+    }
+  </script>
+</body>
+</html>
